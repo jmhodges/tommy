@@ -11,8 +11,8 @@ require 'set'
 
 module Tommy
 class BayesData < Hash
-  attr_reader :name, :training, :pool
-  attr_accessor :token_count, :train_count
+  attr_reader :training, :pool
+  attr_accessor :name, :token_count, :train_count
   def initialize(name='', pool=nil)
     @name = name
     @training = []
@@ -47,7 +47,7 @@ class Bayes
     @tokenizer = opts[:tokenizer] || Tokenizer.new
 
     # The combiner combines probabilities
-    @combiner = opts[:combiner] || method(:robinson)
+    @combiner = opts[:combiner] || Bayes.method(:robinson)
   end
 
   def commit
@@ -269,7 +269,7 @@ class Bayes
   # Q = 1 - prod(p)^(1/n)
   # S = (1 + (P-Q)/(P+Q)) / 2
   # Courtesy of http://christophe.delord.free.fr/en/index.html
-  def robinson(probs, ignore)
+  def self.robinson(probs, ignore)
     nth = 1.0 / probs.size
     p = 1.0 - probs.inject(1.0){ |prod, pr| prod * (1.0-pr[1]) } ** nth
     q = 1.0 - probs.inject(1.0){ |prod, pr| prod * pr[1] } ** nth
@@ -283,7 +283,7 @@ class Bayes
   # S = C-1( -2.ln(prod(1-p)), 2*n )
   # I = (1 + H - S) / 2
   # Courtesy of http://christophe.delord.free.fr/en/index.html
-  def robinson_fisher(probs, ignore)
+  def self.robinson_fisher(probs, ignore)
     # This is problematic because I'm not sure how I should translate the
     # OverflowError behavior from python
     n = probs.size
