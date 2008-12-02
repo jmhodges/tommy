@@ -4,7 +4,8 @@ require 'set'
 
 module Tommy
 class BayesData < Hash
-  attr_reader :name, :training, :pool, :token_count, :train_count
+  attr_reader :name, :training, :pool
+  attr_accessor :token_count, :train_count
   def initialize(name='', pool=nil)
     @name = name
     @training = []
@@ -24,10 +25,10 @@ end
 
 class Bayes
 
-  attr_reader :dirty, :pools
+  attr_reader :dirty, :pools, :data_class, :combiner, :tokenizer
 
   # opts can include :tokenizer, :combiner or :data_class
-  def initialize(opts)
+  def initialize(opts = {})
     @data_class = opts[:data_class] || BayesData
     @corpus = data_class.new('__Corpus__')
     @pools = {'__Corpus__' => @corpus}
@@ -36,7 +37,7 @@ class Bayes
 
     # The tokenizer takes an object and returns
     # a list of strings
-    @tokenizer = opts[:tokenizer] || Tokenizer
+    @tokenizer = opts[:tokenizer] || Tokenizer.new
 
     # The combiner combines probabilities
     @combiner = opts[:combiner] || method(:robinson)
@@ -118,8 +119,8 @@ class Bayes
     pools.each do |pname, pool|
       next if pname == '__Corpus__'
       pool_count = pool.token_count
-      them_count = max(@corpus.token_count - pool_count, 1)
-      cache_dict = (@catch[pname] ||= data_class.new(pname))
+      them_count = [@corpus.token_count - pool_count, 1].max
+      cache_dict = (@cache[pname] ||= data_class.new(pname))
 
       @corpus.each do |word, tot_count|
         # for every word in the copus
@@ -132,15 +133,15 @@ class Bayes
         if pool_count.zero?
           good_metric = 1.0
         else
-          good_metric = min(1.0, other_count / pool_count)
+          good_metric = [1.0, other_count / pool_count].min
         end
-        bad_metric = min(1.0, this_count / them_count)
+        bad_metric = [1.0, this_count / them_count].min
         f = bad_metric / (good_metric + bad_metric)
 
         # PROBABILITY_THRESHOLD
         if (f-0.5).abs >= 0.1
           # GOOD_PROB, BAD_PROB
-          cache_dict[word] = max(0.0001, min(0.9999, f))
+          cache_dict[word] = [0.0001, [0.9999, f].min].max
         end
       end
     end
@@ -173,10 +174,13 @@ class Bayes
   # extracts the probabilities of tokens in a message
   def get_probs(pool, words)
     # This could probably be done better.
-    probs = words.inject([]) do |memo, w|
-      next unless pool.has_key? w 
-      memo << [word, pool[word]]
-    end.sort_by{ |a,b| a[1] <=> b[1] }
+    probs = words.inject([]) do |memo, word|
+      if pool.has_key? word
+        memo << [word, pool[word]]
+      end
+      memo
+    end
+    probs = probs.sort_by{ |a| a[1] }
     probs[0, 2048]
   end
 
@@ -250,7 +254,7 @@ class Bayes
       p = get_probs(pprobs, tokens)
       res[pname] = combiner.call(p, pname) unless p.empty?
     end
-    res.to_a.sort_by{ |a,b| a[1] <=> b[1] }
+    res.to_a.sort_by{ |a| a[1] }
   end
 
   # computes the probability of a message being spam (Robinson's method)
@@ -259,7 +263,7 @@ class Bayes
   # S = (1 + (P-Q)/(P+Q)) / 2
   # Courtesy of http://christophe.delord.free.fr/en/index.html
   def robinson(probs, ignore)
-    nth = 1.0 / prob.size
+    nth = 1.0 / probs.size
     p = 1.0 - probs.inject(1.0){ |prod, pr| prod * (1.0-pr[1]) } ** nth
     q = 1.0 - probs.inject(1.0){ |prod, pr| prod * pr[1] } ** nth
     s = (p - q) / (p + q)
@@ -325,7 +329,7 @@ class Tokenizer
       term *= m / i
       sum += term
     end
-    min(sum, 1.0)
+    [sum, 1.0].min
   end
 end
 end
