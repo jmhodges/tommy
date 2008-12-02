@@ -2,6 +2,7 @@
 
 require 'set'
 
+module Tommy
 class BayesData < Hash
   attr_reader :name, :training, :pool, :token_count, :train_count
   def initialize(name='', pool=nil)
@@ -326,4 +327,5 @@ class Tokenizer
     end
     min(sum, 1.0)
   end
+end
 end
